@@ -1,0 +1,111 @@
+# ======================================================================================================================
+# ================================ L A S T   U N I T   ( last-unit.burnedcore.com ) ====================================
+# ================================ D O C K E R   S W A R M   S T A C K =================================================
+# ======================================================================================================================
+#
+# Deploy target: Swarmpit on the shared Swarm host. Paste/point Swarmpit at this file.
+#
+# ONE service. There is no database, no migrations, no separate API: all server state (challenge store,
+# relayer nonce, claim feed) is in-memory inside the Next.js server process, and the browser talks to the
+# same origin for pages, the claim API, and the SSE stream.
+#
+#   lastunit-ui   Next.js standalone. Traefik-routed at last-unit.burnedcore.com.
+#
+# --------------------------------------------------------------------------------------------------
+# BEFORE FIRST DEPLOY
+# --------------------------------------------------------------------------------------------------
+# 1. Set the image tag below to a real CI-published `sha-<short>` (see docker-images-build-publish.yml).
+#    SHA-pinned deliberately — no floating tags, so redeploys are explicit.
+#
+# 2. Create these TWO external secrets in Swarmpit (names only are committed, never values):
+#      LASTUNIT_BEACON_PK    0x-prefixed private key of the beacon signer (registered on-chain via
+#                            setCheckpoint; signs QR challenges, holds no funds)
+#      LASTUNIT_RELAYER_PK   0x-prefixed private key of the relayer (pays all claim gas — keep it
+#                            funded with MON, ~0.04 MON per claim at the hardcoded gas settings)
+#
+# 3. DNS: point last-unit.burnedcore.com at the Swarm host.
+#
+# 4. The image has the contract address, chain config and https://last-unit.burnedcore.com BAKED IN at
+#    build time (NEXT_PUBLIC_*). Redeploying the contract or moving the host means rebuilding the image —
+#    editing this file alone will NOT change what the browser uses. The runtime env below is parity only.
+#
+# --------------------------------------------------------------------------------------------------
+# EXACTLY ONE REPLICA (it is not optional)
+# --------------------------------------------------------------------------------------------------
+# The beacon challenge Map, the relayer's locally-tracked nonce and the SSE claim feed all live in the
+# process. A second replica would issue QRs the other task cannot resolve (404 on scan) and race the
+# relayer nonce into collisions. Do not scale this service; a restart drops unclaimed QRs by design.
+# ======================================================================================================================
+
+version: '3.7'
+
+# SHA-pinned GHCR ref — replace sha-PLACEHOLDER with the published tag before deploying.
+x-ui-image: &ui-image 'ghcr.io/mckrava/last-unit-ui:sha-PLACEHOLDER'
+
+networks:
+  default:
+    driver: overlay
+  gateway:
+    external: true
+
+secrets:
+  LASTUNIT_BEACON_PK:
+    external: true
+  LASTUNIT_RELAYER_PK:
+    external: true
+
+services:
+  # ----------------------------------------------------- U I -----------------------------------------------------------
+  lastunit-ui:
+    image: *ui-image
+    secrets:
+      - LASTUNIT_BEACON_PK
+      - LASTUNIT_RELAYER_PK
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      # Must be 0.0.0.0 (not localhost) or Traefik cannot reach the container.
+      HOSTNAME: '0.0.0.0'
+      # Runtime parity with the build args — the client bundle already has these COMPILED IN from the
+      # image build. Server-side code (challenge URLs in QRs, RPC clients) reads them at runtime.
+      NEXT_PUBLIC_CHAIN_ID: '10143'
+      NEXT_PUBLIC_RPC_URL: 'https://testnet-rpc.monad.xyz'
+      NEXT_PUBLIC_CONTRACT: '0xC127CaD099Db7ea41de666eB86619e035eA254cA'
+      NEXT_PUBLIC_BASE_URL: 'https://last-unit.burnedcore.com'
+      NEXT_PUBLIC_ACTIVE_DROP: '1'
+      NEXT_PUBLIC_CHECKPOINT: '1'
+    # Secrets are files, so they are exported into the environment before the app starts; only this
+    # wrapper ever sees the values, and they never appear in `docker service inspect`.
+    command:
+      - sh
+      - -c
+      - |
+        export BEACON_PK=$$(cat /run/secrets/LASTUNIT_BEACON_PK) &&
+        export RELAYER_PK=$$(cat /run/secrets/LASTUNIT_RELAYER_PK) &&
+        node server.js
+    networks:
+      - default
+      - gateway
+    logging:
+      driver: json-file
+    deploy:
+      # See header: in-memory state + relayer nonce demand a single long-lived process.
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: gateway
+        traefik.http.services.lastunit-lastunit-ui.loadbalancer.server.port: '3000'
+        traefik.http.routers.lastunit-ui-http.rule: Host(`last-unit.burnedcore.com`)
+        traefik.http.routers.lastunit-ui-http.service: lastunit-lastunit-ui
+        traefik.http.routers.lastunit-ui-http.entrypoints: web
+        traefik.http.routers.lastunit-ui-http.middlewares: https-redirect
+        traefik.http.routers.lastunit-ui.rule: Host(`last-unit.burnedcore.com`)
+        traefik.http.routers.lastunit-ui.service: lastunit-lastunit-ui
+        traefik.http.routers.lastunit-ui.entrypoints: websecure
+        traefik.http.routers.lastunit-ui.tls: 'true'
+        traefik.http.routers.lastunit-ui.tls.certresolver: myresolver
+      restart_policy:
+        condition: on-failure
+        delay: 20s
+        max_attempts: 20
+        window: 300s

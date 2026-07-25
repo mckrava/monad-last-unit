@@ -1,0 +1,17 @@
+# Build context is the repo root; keep it lean.
+.git
+.github
+.idea
+.claude
+initial-request-src
+foundry
+README.md
+stack.yml
+
+# App-level junk (paths are context-relative)
+**/node_modules
+**/.next
+**/.env
+**/.env.*
+**/*.log
+**/.DS_Store

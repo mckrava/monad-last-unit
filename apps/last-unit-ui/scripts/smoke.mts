@@ -3,7 +3,7 @@
 import { encodeAbiParameters, keccak256, parseAbiParameters } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
-const BASE = 'http://localhost:3000';
+const BASE = process.env.SMOKE_BASE ?? 'http://localhost:3000';
 const dropId = process.argv[2] ?? '1';
 const CONTRACT = process.env.NEXT_PUBLIC_CONTRACT as `0x${string}`;
 const CHAIN_ID = BigInt(process.env.NEXT_PUBLIC_CHAIN_ID!);
