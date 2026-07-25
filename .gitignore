@@ -33,3 +33,17 @@ logs/
 coverage/
 
 /initial-request-src/
+
+# Foundry
+foundry/out/
+foundry/cache/
+foundry/broadcast/
+
+# app lib is source, not build output
+!apps/last-unit-ui/lib/
+
+# Next.js
+.next/
+next-env.d.ts
+foundry/lib/
+/development-artifacts

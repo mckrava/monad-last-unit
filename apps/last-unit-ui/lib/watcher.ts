@@ -1,0 +1,180 @@
+import { pub, CONTRACT } from './chain';
+import { lastUnitAbi } from './abi';
+
+export type WallClaim = {
+  dropId: string;
+  player: string;
+  tokenId: string;
+  rank: number;
+  supply: number;
+  challengeBlock: number;
+  claimBlock: number;
+  txHash: string;
+  chainMs?: number;
+  endToEndMs?: number;
+  redeemed?: boolean;
+};
+
+export type DropStatusMsg = {
+  dropId: string;
+  supply: number;
+  claimed: number;
+  freshness: number;
+  active: boolean;
+  name: string;
+};
+
+type Sub = (event: string, data: unknown) => void;
+
+// txHash -> timings, filled by the relayer, read when the Claimed log arrives
+function createTimings() {
+  return new Map<string, { chainMs: number; endToEndMs?: number }>();
+}
+
+function createWatcher() {
+  const state = {
+    latestBlock: 0,
+    claims: [] as WallClaim[],
+    statuses: {} as Record<string, DropStatusMsg>,
+    redeemed: {} as Record<string, number>, // dropId -> redeemed count
+    redeemedTokens: new Set<string>(),
+    subs: new Set<Sub>(),
+  };
+
+  const timings = createTimings();
+
+  function broadcast(event: string, data: unknown) {
+    for (const sub of state.subs) {
+      try {
+        sub(event, data);
+      } catch {}
+    }
+  }
+
+  pub.watchBlockNumber({
+    pollingInterval: 250,
+    onBlockNumber: (bn) => {
+      const n = Number(bn);
+      if (n !== state.latestBlock) {
+        state.latestBlock = n;
+        broadcast('block', { number: n });
+      }
+    },
+    onError: () => {},
+  });
+
+  pub.watchContractEvent({
+    address: CONTRACT,
+    abi: lastUnitAbi,
+    eventName: 'Claimed',
+    pollingInterval: 250,
+    onLogs: (logs) => {
+      for (const log of logs) {
+        const a = log.args as any;
+        const txHash = log.transactionHash ?? '';
+        if (state.claims.some((c) => c.txHash === txHash && c.tokenId === String(a.tokenId))) continue;
+        const t = timings.get(txHash);
+        const claim: WallClaim = {
+          dropId: String(a.dropId),
+          player: a.player,
+          tokenId: String(a.tokenId),
+          rank: Number(a.rank),
+          supply: Number(a.supply),
+          challengeBlock: Number(a.challengeBlock),
+          claimBlock: Number(a.claimBlock),
+          txHash,
+          chainMs: t?.chainMs,
+          endToEndMs: t?.endToEndMs,
+        };
+        state.claims.push(claim);
+        if (state.claims.length > 200) state.claims.splice(0, state.claims.length - 200);
+        broadcast('claim', claim);
+      }
+    },
+    onError: () => {},
+  });
+
+  pub.watchContractEvent({
+    address: CONTRACT,
+    abi: lastUnitAbi,
+    eventName: 'Redeemed',
+    pollingInterval: 250,
+    onLogs: (logs) => {
+      for (const log of logs) {
+        const a = log.args as any;
+        const tokenId = String(a.tokenId);
+        if (state.redeemedTokens.has(tokenId)) continue;
+        state.redeemedTokens.add(tokenId);
+        const dropId = String(a.dropId);
+        state.redeemed[dropId] = (state.redeemed[dropId] ?? 0) + 1;
+        const claim = state.claims.find((c) => c.tokenId === tokenId);
+        if (claim) claim.redeemed = true;
+        broadcast('redeemed', { dropId, tokenId, count: state.redeemed[dropId] });
+      }
+    },
+    onError: () => {},
+  });
+
+  async function pollStatus(dropId: bigint) {
+    try {
+      const [supply, claimed, freshness, active, name] = await pub.readContract({
+        address: CONTRACT,
+        abi: lastUnitAbi,
+        functionName: 'dropStatus',
+        args: [dropId],
+      });
+      const msg: DropStatusMsg = {
+        dropId: String(dropId),
+        supply,
+        claimed,
+        freshness,
+        active,
+        name,
+      };
+      const prev = state.statuses[msg.dropId];
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(msg)) {
+        state.statuses[msg.dropId] = msg;
+        broadcast('status', msg);
+      }
+    } catch {}
+  }
+
+  // Drops whose status we poll every second. Seeded with the default drop;
+  // any drop a beacon/wall/stream client asks about is added dynamically.
+  // Capped to protect the 25 rps eth_call budget.
+  const tracked = new Set<string>(['1', String(process.env.NEXT_PUBLIC_ACTIVE_DROP ?? '1')]);
+
+  function trackDrop(dropId: string | number | bigint) {
+    const id = String(dropId);
+    if (!/^\d+$/.test(id) || tracked.has(id)) return;
+    if (tracked.size >= 12) return;
+    tracked.add(id);
+    pollStatus(BigInt(id)); // immediate first read so the UI isn't a second behind
+  }
+
+  setInterval(() => {
+    for (const id of tracked) pollStatus(BigInt(id));
+  }, 1000);
+
+  function subscribe(fn: Sub) {
+    state.subs.add(fn);
+    return () => state.subs.delete(fn);
+  }
+
+  function recordTimings(txHash: string, chainMs: number, endToEndMs?: number) {
+    timings.set(txHash, { chainMs, endToEndMs });
+    // if the log already arrived before timings were recorded, patch and re-broadcast
+    const existing = state.claims.find((c) => c.txHash === txHash);
+    if (existing) {
+      existing.chainMs = chainMs;
+      existing.endToEndMs = endToEndMs;
+      broadcast('claim', existing);
+    }
+  }
+
+  return { state, subscribe, broadcast, recordTimings, trackDrop };
+}
+
+const g = globalThis as any;
+export const watcher: ReturnType<typeof createWatcher> =
+  g.__db_watcher ?? (g.__db_watcher = createWatcher());

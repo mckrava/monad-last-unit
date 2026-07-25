@@ -1,0 +1,56 @@
+# Caller workflow — builds the LastUnit UI image and pushes it to GHCR,
+# SHA-pinned (`type=sha` => `sha-<short>`):
+#   - ghcr.io/mckrava/last-unit-ui  (Next.js standalone: pages + relayer + beacon + SSE)
+#
+# `stack.yml` pins the image by that `sha-<short>` tag — no floating tags, so a
+# redeploy is always an explicit, auditable ref change.
+# Org `mckrava` is committed literally.
+name: docker-images-build-publish
+
+on:
+  push:
+    branches:
+      - main
+      # `develop` is the active working branch feeding the
+      # last-unit.burnedcore.com deploy, so it must publish images too.
+      - develop
+  # Lets you rebuild a ref (e.g. after redeploying the contract) without an
+  # empty commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-images:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ghcr.io/mckrava/last-unit-ui
+            dockerfile: apps/last-unit-ui/Dockerfile
+            # BUILD-TIME, NOT DEPLOY-TIME. Next.js inlines NEXT_PUBLIC_* into
+            # the client bundle during `next build`. BASE_URL is what the QR
+            # codes point phones at; CONTRACT is the deployed LastUnit address.
+            # Changing either requires a rebuild + a new SHA tag in stack.yml —
+            # editing the stack file alone will NOT change them.
+            #
+            # BEACON_PK / RELAYER_PK are NOT passed here: build args leak into
+            # image history. The Dockerfile builds with dummy keys; real ones
+            # arrive at runtime from Swarm secrets.
+            build_args: |
+              NEXT_PUBLIC_CHAIN_ID=10143
+              NEXT_PUBLIC_RPC_URL=https://testnet-rpc.monad.xyz
+              NEXT_PUBLIC_CONTRACT=0x0675a899e19Fe66D99dAD97e76763A49B8aa3A74
+              NEXT_PUBLIC_BASE_URL=https://last-unit.burnedcore.com
+              NEXT_PUBLIC_ACTIVE_DROP=1
+              NEXT_PUBLIC_CHECKPOINT=1
+    uses: ./.github/workflows/_called_docker-images-build-and-publish.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image: ${{ matrix.image }}
+      dockerfile: ${{ matrix.dockerfile }}
+      build_args: ${{ matrix.build_args }}
