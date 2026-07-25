@@ -1,6 +1,7 @@
 import {
   encodeFunctionData,
   parseGwei,
+  keccak256,
   BaseError,
   ContractFunctionRevertedError,
 } from 'viem';
@@ -102,6 +103,7 @@ function createRelayer() {
   ): Promise<ClaimResult> {
     await ensureInit();
     const { lane, txNonce } = takeLane();
+    let sentTxHash: `0x${string}` | null = null;
 
     const data = encodeFunctionData({
       abi: lastUnitAbi,
@@ -121,6 +123,7 @@ function createRelayer() {
         type: 'eip1559',
       });
 
+      sentTxHash = keccak256(raw);
       console.log(`[relayer] claim drop=${challenge.dropId} lane=${lane.account.address} nonce=${txNonce}`);
 
       const t0 = Date.now();
@@ -189,6 +192,50 @@ function createRelayer() {
       };
     } catch (e: any) {
       const msg = String(e?.shortMessage ?? e?.message ?? '');
+      // The send can fail on the RESPONSE path after the tx landed — a post-hoc
+      // simulation would then misreport the landed claim (e.g. AlreadyClaimed).
+      // Check our own tx hash before declaring failure.
+      if (sentTxHash) {
+        try {
+          const r: any = await pub.waitForTransactionReceipt({
+            hash: sentTxHash,
+            pollingInterval: 200,
+            timeout: 3_000,
+          });
+          if (r.status === 'success') {
+            let rank = 0;
+            let supply = 0;
+            let tokenId = '';
+            let player = '';
+            for (const log of r.logs ?? []) {
+              if (String(log.address).toLowerCase() !== CONTRACT.toLowerCase()) continue;
+              try {
+                const { decodeEventLog } = await import('viem');
+                const ev = decodeEventLog({ abi: lastUnitAbi, data: log.data, topics: log.topics });
+                if (ev.eventName === 'Claimed') {
+                  rank = Number((ev.args as any).rank);
+                  supply = Number((ev.args as any).supply);
+                  tokenId = String((ev.args as any).tokenId);
+                  player = String((ev.args as any).player);
+                }
+              } catch {}
+            }
+            return {
+              status: 'success',
+              rank,
+              supply,
+              tokenId,
+              player,
+              txHash: sentTxHash,
+              blockNumber: Number(r.blockNumber),
+              challengeBlock: Number(challenge.challengeBlock),
+              claimBlock: Number(r.blockNumber),
+              chainMs: 0,
+              endToEndMs: Math.round(clientElapsedMs),
+            };
+          }
+        } catch {}
+      }
       if (/nonce/i.test(msg)) {
         // resync only the lane that failed; the others are untouched
         await resyncLane(lane).catch(() => {});
