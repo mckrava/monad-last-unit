@@ -34,7 +34,10 @@ export default function CashierPage() {
   }, [verdict.s]);
 
   useEffect(() => {
-    if (digits.length !== 6 || verdict.s === 'busy') return;
+    // submit only from idle: after success the verdict is 'ok' while the digits
+    // are still 6 chars, and resubmitting the same code would burn-check an
+    // already-redeemed token and replace the HAND OVER screen with an error
+    if (digits.length !== 6 || verdict.s !== 'idle') return;
     const code = digits;
     setVerdict({ s: 'busy' });
     (async () => {
@@ -97,7 +100,10 @@ export default function CashierPage() {
         <input
           ref={inputRef}
           value={digits}
-          onChange={(e) => setDigits(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          onChange={(e) => {
+            setDigits(e.target.value.replace(/\D/g, '').slice(0, 6));
+            if (verdict.s === 'fail') setVerdict({ s: 'idle' }); // typing again clears the error
+          }}
           inputMode="numeric"
           autoFocus
           disabled={verdict.s === 'busy'}
