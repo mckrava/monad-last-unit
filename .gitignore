@@ -46,3 +46,4 @@ foundry/broadcast/
 .next/
 next-env.d.ts
 foundry/lib/
+/development-artifacts

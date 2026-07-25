@@ -23,6 +23,7 @@ type WallClaim = {
   txHash: string;
   chainMs?: number;
   endToEndMs?: number;
+  redeemed?: boolean;
 };
 type Status = { dropId: string; supply: number; claimed: number; name: string };
 
@@ -32,6 +33,7 @@ export default function Wall({ dropId }: { dropId: string }) {
   const [block, setBlock] = useState(0);
   const [claims, setClaims] = useState<WallClaim[]>([]);
   const [status, setStatus] = useState<Status | null>(null);
+  const [redeemed, setRedeemed] = useState(0);
 
   useEffect(() => {
     const es = new EventSource('/api/stream');
@@ -41,11 +43,15 @@ export default function Wall({ dropId }: { dropId: string }) {
       if (s.dropId === dropId) setStatus(s);
     });
     es.addEventListener('snapshot', (e) => {
-      setClaims(
-        (JSON.parse(e.data).claims as WallClaim[])
-          .filter((c) => c.dropId === dropId)
-          .sort((a, b) => a.rank - b.rank),
-      );
+      const snap = JSON.parse(e.data) as { claims: WallClaim[]; redeemed?: Record<string, number> };
+      setClaims(snap.claims.filter((c) => c.dropId === dropId).sort((a, b) => a.rank - b.rank));
+      setRedeemed(snap.redeemed?.[dropId] ?? 0);
+    });
+    es.addEventListener('redeemed', (e) => {
+      const r = JSON.parse(e.data) as { dropId: string; tokenId: string; count: number };
+      if (r.dropId !== dropId) return;
+      setRedeemed(r.count);
+      setClaims((prev) => prev.map((c) => (c.tokenId === r.tokenId ? { ...c, redeemed: true } : c)));
     });
     es.addEventListener('claim', (e) => {
       const c = JSON.parse(e.data) as WallClaim;
@@ -90,6 +96,10 @@ export default function Wall({ dropId }: { dropId: string }) {
             </span>
             <span className="shrink-0 text-[44px] font-bold whitespace-nowrap text-mute">/ {supply}</span>
           </div>
+          <p className="mt-4 text-[24px] font-semibold tracking-[0.14em] text-mute">
+            CLAIMED <span className="text-ink">{status?.claimed ?? '·'}</span> · PICKED UP{' '}
+            <span className={redeemed > 0 ? 'text-accent' : 'text-ink'}>{redeemed}</span>
+          </p>
         </div>
         <div className="basis-[440px] shrink-0 grow-0 pb-[30px] text-right">
           <p className="text-[46px] leading-[1.05] font-black tracking-[-0.03em]">
@@ -129,11 +139,17 @@ export default function Wall({ dropId }: { dropId: string }) {
           const tight = r.gap <= TIGHT_GAP;
           const newest = i === visible.length - 1;
           return (
-            <div key={r.tokenId} className={`anim-row grid ${COLS} items-center gap-4 border-b border-rule py-5`}>
-              <div className={`text-[48px] leading-none font-black tracking-[-0.04em] ${newest ? 'text-accent' : 'text-ink'}`}>
+            <div
+              key={r.tokenId}
+              className={`anim-row grid ${COLS} items-center gap-4 border-b border-rule py-5 ${r.redeemed ? 'opacity-45' : ''}`}
+            >
+              <div className={`text-[48px] leading-none font-black tracking-[-0.04em] ${newest && !r.redeemed ? 'text-accent' : 'text-ink'}`}>
                 #{r.rank}
               </div>
-              <div className="font-mono text-[28px] font-medium whitespace-nowrap">{shortAddr(r.player)}</div>
+              <div className="font-mono text-[28px] font-medium whitespace-nowrap">
+                {shortAddr(r.player)}
+                {r.redeemed && <span className="ml-4 bg-ink px-2 py-1 text-[16px] font-bold tracking-[0.14em] text-paper">FULFILLED</span>}
+              </div>
               <div className="text-right text-[30px] font-semibold whitespace-nowrap text-mute">
                 {r.chainMs != null ? ms(r.chainMs) : '—'}
               </div>

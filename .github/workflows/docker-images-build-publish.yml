@@ -42,7 +42,7 @@ jobs:
             build_args: |
               NEXT_PUBLIC_CHAIN_ID=10143
               NEXT_PUBLIC_RPC_URL=https://testnet-rpc.monad.xyz
-              NEXT_PUBLIC_CONTRACT=0xC127CaD099Db7ea41de666eB86619e035eA254cA
+              NEXT_PUBLIC_CONTRACT=0x0675a899e19Fe66D99dAD97e76763A49B8aa3A74
               NEXT_PUBLIC_BASE_URL=https://last-unit.burnedcore.com
               NEXT_PUBLIC_ACTIVE_DROP=1
               NEXT_PUBLIC_CHECKPOINT=1

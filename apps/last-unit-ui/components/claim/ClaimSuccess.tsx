@@ -56,8 +56,16 @@ export default function ClaimSuccess({ claim, txHash }: { claim: Claim; txHash: 
         </p>
 
         <a
+          href={`/receipt/${claim.tokenId}`}
+          className="mt-5 flex items-center justify-between border-[3px] border-ink px-[22px] py-5 no-underline"
+        >
+          <span className="text-[26px] font-black tracking-[-0.02em] text-ink">Pick up in store</span>
+          <span className="text-[22px] font-extrabold text-accent">→</span>
+        </a>
+
+        <a
           href={`${EXPLORER}/tx/${txHash}`}
-          className="mt-5 block border-b border-rule font-mono text-[11px] leading-[1.5] break-all text-mute no-underline"
+          className="mt-4 block border-b border-rule font-mono text-[11px] leading-[1.5] break-all text-mute no-underline"
         >
           {txHash}
         </a>

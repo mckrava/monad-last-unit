@@ -39,10 +39,24 @@ export default function Claim({
 
     (async () => {
       try {
-        // ephemeral key: generated in memory, never persisted, one per page load
+        // device-bound key: persisted in localStorage so hasClaimed[drop][player]
+        // actually bites across reloads. Private browsing can throw on access —
+        // fall back to an in-memory key rather than erroring the page.
         const [{ generatePrivateKey, privateKeyToAccount }, { encodeAbiParameters, keccak256, parseAbiParameters }] =
           await Promise.all([import('viem/accounts'), import('viem')]);
-        const account = privateKeyToAccount(generatePrivateKey());
+        let pk: `0x${string}`;
+        try {
+          const stored = localStorage.getItem('lastunit:pk:v1');
+          if (stored) {
+            pk = stored as `0x${string}`;
+          } else {
+            pk = generatePrivateKey();
+            localStorage.setItem('lastunit:pk:v1', pk);
+          }
+        } catch {
+          pk = generatePrivateKey();
+        }
+        const account = privateKeyToAccount(pk);
         const playerHashValue = keccak256(
           encodeAbiParameters(parseAbiParameters('bytes32, uint256'), [challengeHash, BigInt(dropId)]),
         );

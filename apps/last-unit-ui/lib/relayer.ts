@@ -1,13 +1,10 @@
 import {
-  encodeAbiParameters,
   encodeFunctionData,
-  keccak256,
-  parseAbiParameters,
   parseGwei,
   BaseError,
   ContractFunctionRevertedError,
 } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
 import { pub, CHAIN_ID, CONTRACT } from './chain';
 import { lastUnitAbi } from './abi';
 import { watcher } from './watcher';
@@ -29,16 +26,37 @@ export type ClaimResult =
     }
   | { status: 'error'; errorName: string; errorArgs?: unknown[]; chainMs?: number };
 
+// Each claim goes out from a different account, drawn round-robin. Independent
+// accounts have independent nonces, so relative ordering of concurrent claims is
+// genuinely decided by the leader — a single sender's sequential nonces would
+// pre-order them at the protocol level and make the race fake.
+type Lane = { account: PrivateKeyAccount; nonce: number };
+
+function laneKeys(): `0x${string}`[] {
+  const multi = process.env.RELAYER_PKS;
+  if (multi && multi.trim()) {
+    return multi.split(',').map((k) => k.trim() as `0x${string}`).filter(Boolean);
+  }
+  return [process.env.RELAYER_PK as `0x${string}`];
+}
+
 function createRelayer() {
-  const account = privateKeyToAccount(process.env.RELAYER_PK as `0x${string}`);
-  const state = { nonce: -1, initPromise: null as Promise<void> | null };
+  const lanes: Lane[] = laneKeys().map((pk) => ({
+    account: privateKeyToAccount(pk),
+    nonce: -1,
+  }));
+  const state = { rr: 0, initPromise: null as Promise<void> | null, initialized: false };
 
   async function ensureInit() {
-    if (state.nonce >= 0) return;
-    state.initPromise ??= pub
-      .getTransactionCount({ address: account.address })
-      .then((n) => {
-        state.nonce = n;
+    if (state.initialized) return;
+    state.initPromise ??= Promise.all(
+      lanes.map(async (lane) => {
+        lane.nonce = await pub.getTransactionCount({ address: lane.account.address });
+      }),
+    )
+      .then(() => {
+        state.initialized = true;
+        console.log(`[relayer] pool ready: ${lanes.length} lane(s)`);
       })
       .finally(() => {
         state.initPromise = null;
@@ -46,8 +64,15 @@ function createRelayer() {
     await state.initPromise;
   }
 
-  async function resyncNonce() {
-    state.nonce = await pub.getTransactionCount({ address: account.address });
+  async function resyncLane(lane: Lane) {
+    lane.nonce = await pub.getTransactionCount({ address: lane.account.address });
+  }
+
+  // Fully synchronous: no await between picking the lane and taking its nonce,
+  // or concurrent claims would collide on one lane's nonce.
+  function takeLane(): { lane: Lane; txNonce: number } {
+    const lane = lanes[state.rr++ % lanes.length];
+    return { lane, txNonce: lane.nonce++ };
   }
 
   async function decodeRevert(challenge: Challenge, playerSig: `0x${string}`) {
@@ -79,8 +104,7 @@ function createRelayer() {
     clientElapsedMs: number,
   ): Promise<ClaimResult> {
     await ensureInit();
-    // allocate synchronously before any await so parallel claims get distinct nonces
-    const txNonce = state.nonce++;
+    const { lane, txNonce } = takeLane();
 
     const data = encodeFunctionData({
       abi: lastUnitAbi,
@@ -89,7 +113,7 @@ function createRelayer() {
     });
 
     try {
-      const raw = await account.signTransaction({
+      const raw = await lane.account.signTransaction({
         to: CONTRACT,
         data,
         chainId: CHAIN_ID,
@@ -99,6 +123,8 @@ function createRelayer() {
         maxPriorityFeePerGas: parseGwei('1'),
         type: 'eip1559',
       });
+
+      console.log(`[relayer] claim drop=${challenge.dropId} lane=${lane.account.address} nonce=${txNonce}`);
 
       const t0 = Date.now();
       let receipt: any;
@@ -136,7 +162,6 @@ function createRelayer() {
       let tokenId = '';
       let player = '';
       for (const log of receipt.logs ?? []) {
-        // Claimed topic0 check is overkill for one contract; match by address
         if (String(log.address).toLowerCase() !== CONTRACT.toLowerCase()) continue;
         try {
           const { decodeEventLog } = await import('viem');
@@ -168,15 +193,15 @@ function createRelayer() {
     } catch (e: any) {
       const msg = String(e?.shortMessage ?? e?.message ?? '');
       if (/nonce/i.test(msg)) {
-        await resyncNonce().catch(() => {});
+        // resync only the lane that failed; the others are untouched
+        await resyncLane(lane).catch(() => {});
       }
-      // try to decode a custom error from a rejected-at-send revert
       const { errorName, errorArgs } = await decodeRevert(challenge, playerSig);
       return { status: 'error', errorName: errorName === 'UnknownRevert' ? msg || 'SubmitFailed' : errorName, errorArgs };
     }
   }
 
-  return { submit, relayerAddress: account.address };
+  return { submit, laneAddresses: lanes.map((l) => l.account.address) };
 }
 
 const g = globalThis as any;

@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
       // initial snapshot
       send('block', { number: watcher.state.latestBlock });
       for (const status of Object.values(watcher.state.statuses)) send('status', status);
-      send('snapshot', { claims: watcher.state.claims });
+      send('snapshot', { claims: watcher.state.claims, redeemed: watcher.state.redeemed });
 
       const unsubscribe = watcher.subscribe(send);
 

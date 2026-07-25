@@ -12,6 +12,7 @@ export type WallClaim = {
   txHash: string;
   chainMs?: number;
   endToEndMs?: number;
+  redeemed?: boolean;
 };
 
 export type DropStatusMsg = {
@@ -35,6 +36,8 @@ function createWatcher() {
     latestBlock: 0,
     claims: [] as WallClaim[],
     statuses: {} as Record<string, DropStatusMsg>,
+    redeemed: {} as Record<string, number>, // dropId -> redeemed count
+    redeemedTokens: new Set<string>(),
     subs: new Set<Sub>(),
   };
 
@@ -86,6 +89,27 @@ function createWatcher() {
         state.claims.push(claim);
         if (state.claims.length > 200) state.claims.splice(0, state.claims.length - 200);
         broadcast('claim', claim);
+      }
+    },
+    onError: () => {},
+  });
+
+  pub.watchContractEvent({
+    address: CONTRACT,
+    abi: lastUnitAbi,
+    eventName: 'Redeemed',
+    pollingInterval: 250,
+    onLogs: (logs) => {
+      for (const log of logs) {
+        const a = log.args as any;
+        const tokenId = String(a.tokenId);
+        if (state.redeemedTokens.has(tokenId)) continue;
+        state.redeemedTokens.add(tokenId);
+        const dropId = String(a.dropId);
+        state.redeemed[dropId] = (state.redeemed[dropId] ?? 0) + 1;
+        const claim = state.claims.find((c) => c.tokenId === tokenId);
+        if (claim) claim.redeemed = true;
+        broadcast('redeemed', { dropId, tokenId, count: state.redeemed[dropId] });
       }
     },
     onError: () => {},

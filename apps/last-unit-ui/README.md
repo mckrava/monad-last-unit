@@ -34,3 +34,10 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Redemption (v2)
+
+- Claim success links to `/receipt/{tokenId}` — a 6-digit pickup code whose signature bundle is re-signed by the phone every second (same freshness idea as the storefront, mirrored at the exit).
+- `/cashier` — desktop terminal, types the code, burns the soulbound token via `redeem()`. No auth (deliberate shortcut).
+- The wall shows `CLAIMED n / PICKED UP m` per drop and marks fulfilled rows; the gap is the no-show rate.
+- Tokens are soulbound: all transfer paths revert `Soulbound`.

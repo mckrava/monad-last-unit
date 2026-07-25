@@ -15,6 +15,10 @@ contract LastUnit is ERC721 {
     error AlreadyClaimed();
     error BadSigLength();
     error NotOwner();
+    error NotCashier();
+    error NotTokenOwner();
+    error TokenGone();
+    error Soulbound();
 
     event Claimed(
         uint256 indexed dropId,
@@ -44,6 +48,17 @@ contract LastUnit is ERC721 {
     mapping(uint256 => Checkpoint) public checkpoints;
     mapping(uint256 => Drop) public drops;
     mapping(uint256 => mapping(address => bool)) public hasClaimed;
+    mapping(address => bool) public cashiers;
+
+    event CashierSet(address indexed cashier, bool ok);
+    event Redeemed(
+        uint256 indexed dropId,
+        uint256 indexed tokenId,
+        address indexed player,
+        address cashier,
+        uint64 challengeBlock,
+        uint64 redeemBlock
+    );
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -110,6 +125,43 @@ contract LastUnit is ERC721 {
         _mint(player, tokenId);
 
         emit Claimed(dropId, player, tokenId, rank, d.supply, uint64(challengeBlock), uint64(block.number));
+    }
+
+    function setCashier(address c, bool ok) external onlyOwner {
+        cashiers[c] = ok;
+        emit CashierSet(c, ok);
+    }
+
+    /// @dev uint8(1) is a domain separator so a claim signature can never be replayed as a redeem.
+    function redeemHash(uint256 tokenId, uint256 nonce, uint256 challengeBlock) public view returns (bytes32) {
+        return keccak256(abi.encode(block.chainid, address(this), uint8(1), tokenId, nonce, challengeBlock));
+    }
+
+    function redeem(uint256 tokenId, uint256 nonce, uint256 challengeBlock, bytes calldata ownerSig) external {
+        if (!cashiers[msg.sender]) revert NotCashier();
+        if (challengeBlock > block.number) revert FutureChallenge();
+
+        uint256 dropId = tokenId / 1_000_000;
+        uint256 age = block.number - challengeBlock;
+        uint32 f = drops[dropId].freshness;
+        if (age > f) revert StaleChallenge(age, f);
+
+        address holder = _ownerOf[tokenId]; // solmate internal mapping; ownerOf() reverts on burned
+        if (holder == address(0)) revert TokenGone();
+
+        // _recover applies the EIP-191 prefix internally
+        if (_recover(redeemHash(tokenId, nonce, challengeBlock), ownerSig) != holder) {
+            revert NotTokenOwner();
+        }
+
+        _burn(tokenId);
+        emit Redeemed(dropId, tokenId, holder, msg.sender, uint64(challengeBlock), uint64(block.number));
+    }
+
+    /// @dev Soulbound. solmate's safeTransferFrom overloads delegate to transferFrom,
+    ///      so this single override covers all transfer paths.
+    function transferFrom(address, address, uint256) public pure override {
+        revert Soulbound();
     }
 
     function _recover(bytes32 hash, bytes calldata sig) internal pure returns (address) {

@@ -103,6 +103,100 @@ contract LastUnitTest is Test {
         drop.claim(DROP, 4, block.number, beaconSig, playerSig);
     }
 
+    // ---------- redemption + soulbound ----------
+
+    uint256 constant CASHIER_PK = 0xCA5;
+    address cashier;
+
+    function _setupCashier() internal {
+        cashier = vm.addr(CASHIER_PK);
+        drop.setCashier(cashier, true);
+    }
+
+    function _redeemSig(uint256 pk, uint256 tokenId, uint256 nonce, uint256 challengeBlock)
+        internal
+        view
+        returns (bytes memory)
+    {
+        return _sign(pk, drop.redeemHash(tokenId, nonce, challengeBlock));
+    }
+
+    // R1. valid cashier + owner sig + fresh challenge -> burns, emits Redeemed, ownerOf reverts
+    function test_RedeemBurnsAndEmits() public {
+        _setupCashier();
+        (uint256 tokenId,) = _claimAs(0xA1, DROP, 1, block.number);
+        bytes memory sig = _redeemSig(0xA1, tokenId, 7, block.number);
+        vm.expectEmit(true, true, true, true);
+        emit LastUnit.Redeemed(DROP, tokenId, vm.addr(0xA1), cashier, uint64(block.number), uint64(block.number));
+        vm.prank(cashier);
+        drop.redeem(tokenId, 7, block.number, sig);
+        vm.expectRevert("NOT_MINTED");
+        drop.ownerOf(tokenId);
+    }
+
+    // R2. non-cashier caller reverts NotCashier
+    function test_RedeemNotCashier() public {
+        _setupCashier();
+        (uint256 tokenId,) = _claimAs(0xA1, DROP, 1, block.number);
+        bytes memory sig = _redeemSig(0xA1, tokenId, 7, block.number);
+        vm.expectRevert(LastUnit.NotCashier.selector);
+        drop.redeem(tokenId, 7, block.number, sig);
+    }
+
+    // R3. signature from a non-owner key reverts NotTokenOwner
+    function test_RedeemNotTokenOwner() public {
+        _setupCashier();
+        (uint256 tokenId,) = _claimAs(0xA1, DROP, 1, block.number);
+        bytes memory sig = _redeemSig(0xA2, tokenId, 7, block.number);
+        vm.prank(cashier);
+        vm.expectRevert(LastUnit.NotTokenOwner.selector);
+        drop.redeem(tokenId, 7, block.number, sig);
+    }
+
+    // R4. redeeming the same token twice reverts TokenGone
+    function test_RedeemTwiceTokenGone() public {
+        _setupCashier();
+        (uint256 tokenId,) = _claimAs(0xA1, DROP, 1, block.number);
+        bytes memory sig1 = _redeemSig(0xA1, tokenId, 7, block.number);
+        bytes memory sig2 = _redeemSig(0xA1, tokenId, 8, block.number);
+        vm.prank(cashier);
+        drop.redeem(tokenId, 7, block.number, sig1);
+        vm.prank(cashier);
+        vm.expectRevert(LastUnit.TokenGone.selector);
+        drop.redeem(tokenId, 8, block.number, sig2);
+    }
+
+    // R5. age == freshness passes; age == freshness + 1 reverts StaleChallenge
+    function test_RedeemFreshnessBoundary() public {
+        _setupCashier();
+        (uint256 tokenId,) = _claimAs(0xA1, DROP, 1, block.number);
+        uint256 ok = block.number - 10; // freshness == 10
+        bytes memory sigOk = _redeemSig(0xA1, tokenId, 7, ok);
+        vm.prank(cashier);
+        drop.redeem(tokenId, 7, ok, sigOk);
+
+        (uint256 tokenId2,) = _claimAs(0xA2, DROP, 2, block.number);
+        uint256 stale = block.number - 11;
+        bytes memory sig = _redeemSig(0xA2, tokenId2, 9, stale);
+        vm.prank(cashier);
+        vm.expectRevert(abi.encodeWithSelector(LastUnit.StaleChallenge.selector, 11, 10));
+        drop.redeem(tokenId2, 9, stale, sig);
+    }
+
+    // R6. transferFrom and both safeTransferFrom overloads revert Soulbound
+    function test_Soulbound() public {
+        (uint256 tokenId,) = _claimAs(0xA1, DROP, 1, block.number);
+        address holder = vm.addr(0xA1);
+        vm.startPrank(holder);
+        vm.expectRevert(LastUnit.Soulbound.selector);
+        drop.transferFrom(holder, address(this), tokenId);
+        vm.expectRevert(LastUnit.Soulbound.selector);
+        drop.safeTransferFrom(holder, address(this), tokenId);
+        vm.expectRevert(LastUnit.Soulbound.selector);
+        drop.safeTransferFrom(holder, address(this), tokenId, "");
+        vm.stopPrank();
+    }
+
     // 7. two drops sharing a checkpoint: independent ranks and token ids
     function test_DropsShareCheckpointIndependently() public {
         drop.createDrop(2, CP, 5, 10, "second drop");
