@@ -5,6 +5,10 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  // wall/beacon/receipt pass ?drop=N so the watcher polls that drop's status
+  const drop = req.nextUrl.searchParams.get('drop');
+  if (drop) watcher.trackDrop(drop);
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({

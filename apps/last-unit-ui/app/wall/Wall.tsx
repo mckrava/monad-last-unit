@@ -36,11 +36,11 @@ export default function Wall({ dropId }: { dropId: string }) {
   const [redeemed, setRedeemed] = useState(0);
 
   useEffect(() => {
-    const es = new EventSource('/api/stream');
+    const es = new EventSource(`/api/stream?drop=${dropId}`);
     es.addEventListener('block', (e) => setBlock(JSON.parse(e.data).number));
     es.addEventListener('status', (e) => {
       const s = JSON.parse(e.data) as Status;
-      if (s.dropId === dropId) setStatus(s);
+      if (String(s.dropId) === String(dropId)) setStatus(s);
     });
     es.addEventListener('snapshot', (e) => {
       const snap = JSON.parse(e.data) as { claims: WallClaim[]; redeemed?: Record<string, number> };
@@ -103,9 +103,7 @@ export default function Wall({ dropId }: { dropId: string }) {
         </div>
         <div className="basis-[440px] shrink-0 grow-0 pb-[30px] text-right">
           <p className="text-[46px] leading-[1.05] font-black tracking-[-0.03em]">
-            {DROP.name}
-            <br />
-            {DROP.edition}
+            {status ? status.name : <>{DROP.name}<br />{DROP.edition}</>}
           </p>
           <p className="mt-3 text-[22px] leading-[1.5] font-semibold tracking-[0.1em] text-mute">
             {supply} UNITS · CLAIMED IN STORE

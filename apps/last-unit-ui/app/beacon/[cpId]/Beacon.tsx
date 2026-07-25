@@ -48,17 +48,14 @@ export default function Beacon({ cpId, dropId }: { cpId: string; dropId: string 
 
   // Real chain texture: proposed-block feed over SSE, plus live supply.
   useEffect(() => {
-    const es = new EventSource('/api/stream');
+    const es = new EventSource(`/api/stream?drop=${dropId}`);
     es.addEventListener('block', (e) => setBlock(JSON.parse(e.data).number));
     es.addEventListener('status', (e) => {
       const s = JSON.parse(e.data) as Status;
-      if (s.dropId === dropId) setStatus(s);
+      if (String(s.dropId) === String(dropId)) setStatus(s);
     });
     return () => es.close();
   }, [dropId]);
-
-  const remaining = status ? status.supply - status.claimed : null;
-  const supply = status?.supply ?? DROP.supply;
 
   return (
     <main className="flex h-dvh w-screen flex-col overflow-hidden p-[3vmin] landscape:flex-row landscape:gap-[4vmin] bg-paper text-ink">
@@ -70,14 +67,21 @@ export default function Beacon({ cpId, dropId }: { cpId: string; dropId: string 
         </div>
 
         <h1 className="mt-[3vmin] text-[6.4vmin] leading-[0.98] font-black tracking-[-0.04em]">
-          {DROP.name} {DROP.edition}
+          {status ? status.name : `${DROP.name} ${DROP.edition}`}
         </h1>
 
+        {/* never a partial string: full "N OF M LEFT" only once status has loaded */}
         <div className="mt-[2.5vmin] flex items-baseline gap-[2vmin]">
-          <span className="text-[14vmin] leading-[0.8] font-black tracking-[-0.055em] text-accent">
-            {remaining ?? '·'}
-          </span>
-          <span className="text-[5vmin] font-bold">OF {supply} LEFT</span>
+          {status ? (
+            <>
+              <span className="text-[14vmin] leading-[0.8] font-black tracking-[-0.055em] text-accent">
+                {status.supply - status.claimed}
+              </span>
+              <span className="text-[5vmin] font-bold">OF {status.supply} LEFT</span>
+            </>
+          ) : (
+            <span className="text-[14vmin] leading-[0.8] font-black tracking-[-0.055em] text-mute">—</span>
+          )}
         </div>
 
         <div className="mt-auto hidden landscape:block">

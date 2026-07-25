@@ -139,9 +139,21 @@ function createWatcher() {
     } catch {}
   }
 
+  // Drops whose status we poll every second. Seeded with the default drop;
+  // any drop a beacon/wall/stream client asks about is added dynamically.
+  // Capped to protect the 25 rps eth_call budget.
+  const tracked = new Set<string>(['1', String(process.env.NEXT_PUBLIC_ACTIVE_DROP ?? '1')]);
+
+  function trackDrop(dropId: string | number | bigint) {
+    const id = String(dropId);
+    if (!/^\d+$/.test(id) || tracked.has(id)) return;
+    if (tracked.size >= 12) return;
+    tracked.add(id);
+    pollStatus(BigInt(id)); // immediate first read so the UI isn't a second behind
+  }
+
   setInterval(() => {
-    pollStatus(1n);
-    pollStatus(2n);
+    for (const id of tracked) pollStatus(BigInt(id));
   }, 1000);
 
   function subscribe(fn: Sub) {
@@ -160,7 +172,7 @@ function createWatcher() {
     }
   }
 
-  return { state, subscribe, broadcast, recordTimings };
+  return { state, subscribe, broadcast, recordTimings, trackDrop };
 }
 
 const g = globalThis as any;
