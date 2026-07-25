@@ -32,10 +32,12 @@ ENV NEXT_PUBLIC_CHAIN_ID=$NEXT_PUBLIC_CHAIN_ID \
     NEXT_PUBLIC_CHECKPOINT=$NEXT_PUBLIC_CHECKPOINT \
     NEXT_TELEMETRY_DISABLED=1
 
-# Dummy keys so module-init key parsing (lib/beacon.ts, lib/relayer.ts) survives
-# `next build`. They are never real: the runtime values come from Swarm secrets.
+# Dummy keys so module-init key parsing (lib/beacon.ts, lib/relayer.ts,
+# lib/cashier.ts) survives `next build`. They are never real: the runtime
+# values come from Swarm secrets.
 ENV BEACON_PK=0x0000000000000000000000000000000000000000000000000000000000000001 \
-    RELAYER_PK=0x0000000000000000000000000000000000000000000000000000000000000002
+    RELAYER_PK=0x0000000000000000000000000000000000000000000000000000000000000002 \
+    CASHIER_PK=0x0000000000000000000000000000000000000000000000000000000000000003
 
 RUN npm run build
 
