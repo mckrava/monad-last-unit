@@ -5,7 +5,7 @@ import {ERC721} from "solmate/tokens/ERC721.sol";
 
 /// Verified-presence flash drop. A claim is valid only with a fresh,
 /// beacon-signed challenge; transaction ordering decides who gets scarce units.
-contract FlashDrop is ERC721 {
+contract LastUnit is ERC721 {
     error DropInactive();
     error SoldOut();
     error FutureChallenge();
@@ -50,7 +50,7 @@ contract FlashDrop is ERC721 {
         _;
     }
 
-    constructor() ERC721("FlashDrop", "DROP") {
+    constructor() ERC721("Last Unit", "UNIT") {
         owner = msg.sender;
     }
 
@@ -124,7 +124,7 @@ contract FlashDrop is ERC721 {
     function tokenURI(uint256 tokenId) public pure override returns (string memory) {
         return string(
             abi.encodePacked(
-                'data:application/json,{"name":"FlashDrop%20%23',
+                'data:application/json,{"name":"LastUnit%20%23',
                 _toString(tokenId),
                 '","description":"Claimed%20in%20person%20on%20Monad."}'
             )

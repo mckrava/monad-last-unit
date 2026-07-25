@@ -1,5 +1,5 @@
 import { pub, CONTRACT } from './chain';
-import { flashDropAbi } from './abi';
+import { lastUnitAbi } from './abi';
 
 export type WallClaim = {
   dropId: string;
@@ -62,7 +62,7 @@ function createWatcher() {
 
   pub.watchContractEvent({
     address: CONTRACT,
-    abi: flashDropAbi,
+    abi: lastUnitAbi,
     eventName: 'Claimed',
     pollingInterval: 250,
     onLogs: (logs) => {
@@ -95,7 +95,7 @@ function createWatcher() {
     try {
       const [supply, claimed, freshness, active, name] = await pub.readContract({
         address: CONTRACT,
-        abi: flashDropAbi,
+        abi: lastUnitAbi,
         functionName: 'dropStatus',
         args: [dropId],
       });

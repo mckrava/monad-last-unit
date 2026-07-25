@@ -1,5 +1,6 @@
 import { beacon } from '@/lib/beacon';
-import ClaimClient from './claim-client';
+import { watcher } from '@/lib/watcher';
+import Claim from './Claim';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,21 +10,19 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
   const challenge = beacon.get(id);
 
   if (!challenge) {
-    return (
-      <main className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-8 text-center gap-4">
-        <h1 className="text-4xl font-black">This code has expired</h1>
-        <p className="text-zinc-400 text-lg">
-          Codes rotate every second and die fast. Go back to the display and scan the live one.
-        </p>
-      </main>
-    );
+    // server restarted or the QR is very old — same verdict as on-chain staleness
+    return <Claim id={id} expired />;
   }
 
+  const status = watcher.state.statuses[String(challenge.dropId)];
   return (
-    <ClaimClient
-      id={challenge.id}
+    <Claim
+      id={id}
       dropId={String(challenge.dropId)}
       challengeHash={challenge.challengeHash}
+      challengeBlock={Number(challenge.challengeBlock)}
+      supply={status?.supply}
+      claimed={status?.claimed}
     />
   );
 }

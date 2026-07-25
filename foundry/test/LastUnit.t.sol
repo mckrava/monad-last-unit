@@ -2,10 +2,10 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {FlashDrop} from "../src/FlashDrop.sol";
+import {LastUnit} from "../src/LastUnit.sol";
 
-contract FlashDropTest is Test {
-    FlashDrop drop;
+contract LastUnitTest is Test {
+    LastUnit drop;
 
     uint256 constant BEACON_PK = 0xB0B;
     uint256 constant OTHER_PK = 0xBAD;
@@ -16,7 +16,7 @@ contract FlashDropTest is Test {
 
     function setUp() public {
         beacon = vm.addr(BEACON_PK);
-        drop = new FlashDrop();
+        drop = new LastUnit();
         drop.setCheckpoint(CP, beacon, "stage");
         drop.createDrop(DROP, CP, 3, 10, "test drop");
         vm.roll(100);
@@ -58,7 +58,7 @@ contract FlashDropTest is Test {
         bytes32 ch = drop.challengeHash(CP, 2, stale);
         bytes memory beaconSig = _sign(BEACON_PK, ch);
         bytes memory playerSig = _sign(0xA2, drop.playerHash(ch, DROP));
-        vm.expectRevert(abi.encodeWithSelector(FlashDrop.StaleChallenge.selector, 11, 10));
+        vm.expectRevert(abi.encodeWithSelector(LastUnit.StaleChallenge.selector, 11, 10));
         drop.claim(DROP, 2, stale, beaconSig, playerSig);
     }
 
@@ -68,7 +68,7 @@ contract FlashDropTest is Test {
         bytes32 ch = drop.challengeHash(CP, 1, future);
         bytes memory beaconSig = _sign(BEACON_PK, ch);
         bytes memory playerSig = _sign(0xA1, drop.playerHash(ch, DROP));
-        vm.expectRevert(FlashDrop.FutureChallenge.selector);
+        vm.expectRevert(LastUnit.FutureChallenge.selector);
         drop.claim(DROP, 1, future, beaconSig, playerSig);
     }
 
@@ -77,7 +77,7 @@ contract FlashDropTest is Test {
         bytes32 ch = drop.challengeHash(CP, 1, block.number);
         bytes memory beaconSig = _sign(OTHER_PK, ch);
         bytes memory playerSig = _sign(0xA1, drop.playerHash(ch, DROP));
-        vm.expectRevert(FlashDrop.BadBeaconSig.selector);
+        vm.expectRevert(LastUnit.BadBeaconSig.selector);
         drop.claim(DROP, 1, block.number, beaconSig, playerSig);
     }
 
@@ -87,7 +87,7 @@ contract FlashDropTest is Test {
         bytes32 ch = drop.challengeHash(CP, 2, block.number);
         bytes memory beaconSig = _sign(BEACON_PK, ch);
         bytes memory playerSig = _sign(0xA1, drop.playerHash(ch, DROP));
-        vm.expectRevert(FlashDrop.AlreadyClaimed.selector);
+        vm.expectRevert(LastUnit.AlreadyClaimed.selector);
         drop.claim(DROP, 2, block.number, beaconSig, playerSig);
     }
 
@@ -99,7 +99,7 @@ contract FlashDropTest is Test {
         bytes32 ch = drop.challengeHash(CP, 4, block.number);
         bytes memory beaconSig = _sign(BEACON_PK, ch);
         bytes memory playerSig = _sign(0xA4, drop.playerHash(ch, DROP));
-        vm.expectRevert(FlashDrop.SoldOut.selector);
+        vm.expectRevert(LastUnit.SoldOut.selector);
         drop.claim(DROP, 4, block.number, beaconSig, playerSig);
     }
 

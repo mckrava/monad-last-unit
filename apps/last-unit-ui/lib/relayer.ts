@@ -9,7 +9,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { pub, CHAIN_ID, CONTRACT } from './chain';
-import { flashDropAbi } from './abi';
+import { lastUnitAbi } from './abi';
 import { watcher } from './watcher';
 import type { Challenge } from './beacon';
 
@@ -17,9 +17,13 @@ export type ClaimResult =
   | {
       status: 'success';
       rank: number;
+      supply: number;
       tokenId: string;
+      player: string;
       txHash: string;
       blockNumber: number;
+      challengeBlock: number;
+      claimBlock: number;
       chainMs: number;
       endToEndMs: number;
     }
@@ -50,7 +54,7 @@ function createRelayer() {
     try {
       await pub.simulateContract({
         address: CONTRACT,
-        abi: flashDropAbi,
+        abi: lastUnitAbi,
         functionName: 'claim',
         args: [challenge.dropId, challenge.nonce, challenge.challengeBlock, challenge.beaconSig, playerSig],
       });
@@ -79,7 +83,7 @@ function createRelayer() {
     const txNonce = state.nonce++;
 
     const data = encodeFunctionData({
-      abi: flashDropAbi,
+      abi: lastUnitAbi,
       functionName: 'claim',
       args: [challenge.dropId, challenge.nonce, challenge.challengeBlock, challenge.beaconSig, playerSig],
     });
@@ -126,25 +130,41 @@ function createRelayer() {
         return { status: 'error', errorName, errorArgs, chainMs };
       }
 
-      // pull rank/tokenId from the Claimed log
+      // pull rank/tokenId/supply/player from the Claimed log
       let rank = 0;
+      let supply = 0;
       let tokenId = '';
+      let player = '';
       for (const log of receipt.logs ?? []) {
         // Claimed topic0 check is overkill for one contract; match by address
         if (String(log.address).toLowerCase() !== CONTRACT.toLowerCase()) continue;
         try {
           const { decodeEventLog } = await import('viem');
-          const ev = decodeEventLog({ abi: flashDropAbi, data: log.data, topics: log.topics });
+          const ev = decodeEventLog({ abi: lastUnitAbi, data: log.data, topics: log.topics });
           if (ev.eventName === 'Claimed') {
             rank = Number((ev.args as any).rank);
+            supply = Number((ev.args as any).supply);
             tokenId = String((ev.args as any).tokenId);
+            player = String((ev.args as any).player);
           }
         } catch {}
       }
 
       const endToEndMs = Math.round(clientElapsedMs + chainMs);
       watcher.recordTimings(txHash, chainMs, endToEndMs);
-      return { status: 'success', rank, tokenId, txHash, blockNumber, chainMs, endToEndMs };
+      return {
+        status: 'success',
+        rank,
+        supply,
+        tokenId,
+        player,
+        txHash,
+        blockNumber,
+        challengeBlock: Number(challenge.challengeBlock),
+        claimBlock: blockNumber,
+        chainMs,
+        endToEndMs,
+      };
     } catch (e: any) {
       const msg = String(e?.shortMessage ?? e?.message ?? '');
       if (/nonce/i.test(msg)) {

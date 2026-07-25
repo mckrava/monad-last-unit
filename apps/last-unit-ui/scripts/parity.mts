@@ -1,7 +1,7 @@
 // npx tsx --env-file=.env.local scripts/parity.ts
 // Verifies TS challengeHash/playerHash byte-parity with the deployed contract (§5).
 import { createPublicClient, http, defineChain, encodeAbiParameters, keccak256, parseAbiParameters } from 'viem';
-import { flashDropAbi } from '../lib/abi';
+import { lastUnitAbi } from '../lib/abi';
 
 const CONTRACT = process.env.NEXT_PUBLIC_CONTRACT as `0x${string}`;
 const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID);
@@ -31,11 +31,11 @@ const tsPlayer = keccak256(
 );
 
 const onchainChallenge = await pub.readContract({
-  address: CONTRACT, abi: flashDropAbi, functionName: 'challengeHash',
+  address: CONTRACT, abi: lastUnitAbi, functionName: 'challengeHash',
   args: [cpId, nonce, challengeBlock],
 });
 const onchainPlayer = await pub.readContract({
-  address: CONTRACT, abi: flashDropAbi, functionName: 'playerHash',
+  address: CONTRACT, abi: lastUnitAbi, functionName: 'playerHash',
   args: [tsChallenge, dropId],
 });
 

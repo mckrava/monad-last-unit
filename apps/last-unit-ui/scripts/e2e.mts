@@ -6,7 +6,7 @@ import {
   parseAbiParameters, encodeFunctionData, parseGwei, decodeEventLog,
 } from 'viem';
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
-import { flashDropAbi } from '../lib/abi';
+import { lastUnitAbi } from '../lib/abi';
 
 const CONTRACT = process.env.NEXT_PUBLIC_CONTRACT as `0x${string}`;
 const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID);
@@ -45,7 +45,7 @@ const playerSig = await player.signMessage({ message: { raw: playerHashValue } }
 // relayer side
 const txNonce = await pub.getTransactionCount({ address: relayer.address });
 const data = encodeFunctionData({
-  abi: flashDropAbi, functionName: 'claim',
+  abi: lastUnitAbi, functionName: 'claim',
   args: [dropId, nonce, challengeBlock, beaconSig, playerSig],
 });
 const raw = await relayer.signTransaction({
@@ -68,7 +68,7 @@ const chainMs = Date.now() - t0;
 console.log('status:', receipt.status, 'block:', BigInt(receipt.blockNumber).toString(), 'chainMs:', chainMs);
 for (const log of receipt.logs ?? []) {
   try {
-    const ev = decodeEventLog({ abi: flashDropAbi, data: log.data, topics: log.topics });
+    const ev = decodeEventLog({ abi: lastUnitAbi, data: log.data, topics: log.topics });
     if (ev.eventName === 'Claimed') {
       const a: any = ev.args;
       console.log(`Claimed: rank=${a.rank} tokenId=${a.tokenId} player=${a.player}`);
