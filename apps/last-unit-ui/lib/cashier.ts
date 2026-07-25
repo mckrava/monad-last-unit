@@ -115,7 +115,16 @@ function createCashier() {
 
       const ok = receipt.status === '0x1' || receipt.status === 'success';
       if (!ok) {
-        const { errorName, errorArgs } = await decodeRevert(args);
+        let { errorName, errorArgs } = await decodeRevert(args);
+        if (errorName === 'UnknownRevert') {
+          // simulation can lag the just-landed state on a load-balanced RPC;
+          // a burned token is the common cause, so check it directly
+          const gone = await pub
+            .readContract({ address: CONTRACT, abi: lastUnitAbi, functionName: 'ownerOf', args: [tokenId] })
+            .then(() => false)
+            .catch(() => true);
+          if (gone) errorName = 'TokenGone';
+        }
         return { status: 'error', errorName, errorArgs };
       }
 
