@@ -2,6 +2,7 @@ import { encodeAbiParameters, keccak256, parseAbiParameters } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { CHAIN_ID, CONTRACT, BASE_URL } from './chain';
 import { watcher } from './watcher';
+import { readPk } from './pk';
 
 export type Challenge = {
   id: string;
@@ -25,7 +26,7 @@ function shortId(): string {
 }
 
 function createBeacon() {
-  const account = privateKeyToAccount(process.env.BEACON_PK as `0x${string}`);
+  const account = privateKeyToAccount(readPk('BEACON_PK'));
   const store = new Map<string, Challenge>();
 
   async function issue(cpId: bigint, dropId: bigint): Promise<Challenge> {

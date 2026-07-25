@@ -8,6 +8,7 @@ import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
 import { pub, CHAIN_ID, CONTRACT } from './chain';
 import { lastUnitAbi } from './abi';
 import { watcher } from './watcher';
+import { readPkList } from './pk';
 import type { Challenge } from './beacon';
 
 export type ClaimResult =
@@ -33,11 +34,7 @@ export type ClaimResult =
 type Lane = { account: PrivateKeyAccount; nonce: number };
 
 function laneKeys(): `0x${string}`[] {
-  const multi = process.env.RELAYER_PKS;
-  if (multi && multi.trim()) {
-    return multi.split(',').map((k) => k.trim() as `0x${string}`).filter(Boolean);
-  }
-  return [process.env.RELAYER_PK as `0x${string}`];
+  return readPkList('RELAYER_PKS', 'RELAYER_PK');
 }
 
 function createRelayer() {

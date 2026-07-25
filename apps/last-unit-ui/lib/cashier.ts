@@ -8,6 +8,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { pub, CHAIN_ID, CONTRACT } from './chain';
 import { lastUnitAbi } from './abi';
+import { readPk } from './pk';
 
 export type RedeemResult =
   | { status: 'success'; tokenId: string; dropId: string; rank: number; txHash: string; chainMs: number }
@@ -16,7 +17,7 @@ export type RedeemResult =
 // Same submission rules as the claim relayer: hardcoded gas, no eth_estimateGas,
 // sendRawTransactionSync with fallback, local nonce, custom-error decoding.
 function createCashier() {
-  const account = privateKeyToAccount(process.env.CASHIER_PK as `0x${string}`);
+  const account = privateKeyToAccount(readPk('CASHIER_PK'));
   const state = { nonce: -1, initPromise: null as Promise<void> | null };
 
   async function ensureInit() {
