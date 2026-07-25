@@ -1,6 +1,7 @@
 import {
   encodeFunctionData,
   parseGwei,
+  keccak256,
   BaseError,
   ContractFunctionRevertedError,
   decodeEventLog,
@@ -63,6 +64,7 @@ function createCashier() {
     await ensureInit();
     const txNonce = state.nonce++;
     const args = [tokenId, nonce, challengeBlock, ownerSig] as const;
+    let sentTxHash: `0x${string}` | null = null;
 
     try {
       const raw = await account.signTransaction({
@@ -75,6 +77,7 @@ function createCashier() {
         maxPriorityFeePerGas: parseGwei('1'),
         type: 'eip1559',
       });
+      sentTxHash = keccak256(raw);
 
       const t0 = Date.now();
       let receipt: any;
@@ -109,6 +112,28 @@ function createCashier() {
       return { status: 'success', tokenId: String(tokenId), dropId, rank, txHash: receipt.transactionHash, chainMs };
     } catch (e: any) {
       const msg = String(e?.shortMessage ?? e?.message ?? '');
+      // The send can fail on the RESPONSE path after the tx landed. Before
+      // declaring failure (a post-hoc simulation would see the burned token and
+      // misreport a successful redemption as TokenGone), check our own tx hash.
+      if (sentTxHash) {
+        try {
+          const r = await pub.waitForTransactionReceipt({
+            hash: sentTxHash,
+            pollingInterval: 200,
+            timeout: 3_000,
+          });
+          if (r.status === 'success') {
+            return {
+              status: 'success',
+              tokenId: String(tokenId),
+              dropId: String(tokenId / 1_000_000n),
+              rank: Number(tokenId % 1_000_000n),
+              txHash: sentTxHash,
+              chainMs: 0,
+            };
+          }
+        } catch {}
+      }
       if (/nonce/i.test(msg)) {
         state.nonce = await pub.getTransactionCount({ address: account.address }).catch(() => state.nonce);
       }
