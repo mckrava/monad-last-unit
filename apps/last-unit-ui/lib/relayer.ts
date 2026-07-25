@@ -236,10 +236,10 @@ function createRelayer() {
           }
         } catch {}
       }
-      if (/nonce/i.test(msg)) {
-        // resync only the lane that failed; the others are untouched
-        await resyncLane(lane).catch(() => {});
-      }
+      // tx did not land: resync this lane unconditionally (stale nonces can
+      // surface as opaque internal errors, not just "nonce too low"); the
+      // other lanes are untouched
+      await resyncLane(lane).catch(() => {});
       const { errorName, errorArgs } = await decodeRevert(challenge, playerSig);
       return { status: 'error', errorName: errorName === 'UnknownRevert' ? msg || 'SubmitFailed' : errorName, errorArgs };
     }

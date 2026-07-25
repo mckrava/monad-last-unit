@@ -62,6 +62,25 @@ function createCashier() {
     ownerSig: `0x${string}`,
   ): Promise<RedeemResult> {
     await ensureInit();
+    // One automatic retry: a stale local nonce (e.g. the same key used from
+    // another environment) surfaces as an opaque RPC "internal error" on send.
+    // After any unrecovered send failure we resync and try once more.
+    let result = await attempt(tokenId, nonce, challengeBlock, ownerSig);
+    if (result.status === 'error' && result.errorName === 'RetryAfterResync') {
+      result = await attempt(tokenId, nonce, challengeBlock, ownerSig);
+      if (result.status === 'error' && result.errorName === 'RetryAfterResync') {
+        return { status: 'error', errorName: 'SubmitFailed' };
+      }
+    }
+    return result;
+  }
+
+  async function attempt(
+    tokenId: bigint,
+    nonce: bigint,
+    challengeBlock: bigint,
+    ownerSig: `0x${string}`,
+  ): Promise<RedeemResult> {
     const txNonce = state.nonce++;
     const args = [tokenId, nonce, challengeBlock, ownerSig] as const;
     let sentTxHash: `0x${string}` | null = null;
@@ -134,15 +153,17 @@ function createCashier() {
           }
         } catch {}
       }
-      if (/nonce/i.test(msg)) {
-        state.nonce = await pub.getTransactionCount({ address: account.address }).catch(() => state.nonce);
-      }
+      // tx did not land: resync unconditionally — stale nonces masquerade as
+      // opaque internal errors, not always as "nonce too low"
+      state.nonce = await pub.getTransactionCount({ address: account.address }).catch(() => state.nonce);
+
       const { errorName, errorArgs } = await decodeRevert(args);
-      return {
-        status: 'error',
-        errorName: errorName === 'UnknownRevert' ? msg || 'SubmitFailed' : errorName,
-        errorArgs,
-      };
+      if (errorName === 'UnknownRevert') {
+        // args are valid on-chain, so the failure was transport/nonce — retryable
+        console.log(`[cashier] send failed (${msg || 'unknown'}), nonce resynced to ${state.nonce}`);
+        return { status: 'error', errorName: 'RetryAfterResync' };
+      }
+      return { status: 'error', errorName, errorArgs };
     }
   }
 
