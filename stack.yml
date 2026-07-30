@@ -44,7 +44,7 @@
 version: '3.7'
 
 # SHA-pinned GHCR ref — replace sha-PLACEHOLDER with the published tag before deploying.
-x-ui-image: &ui-image 'ghcr.io/mckrava/last-unit-ui:sha-6592023'
+x-ui-image: &ui-image 'ghcr.io/mckrava/last-unit-ui:sha-201088e'
 
 networks:
   default:

@@ -9,12 +9,10 @@ claimers (screenshot relays) are structurally slower and lose the race.
 
 | | |
 |---|---|
-| LastUnit contract | `0xC127CaD099Db7ea41de666eB86619e035eA254cA` |
-| Explorer | https://testnet.monadvision.com/address/0xC127CaD099Db7ea41de666eB86619e035eA254cA |
+| LastUnit contract | `0x0675a899e19Fe66D99dAD97e76763A49B8aa3A74` |
+| Explorer | https://testnet.monadvision.com/address/0x0675a899e19Fe66D99dAD97e76763A49B8aa3A74 |
 | Beacon signer | `0xd5b8d66002916CF0fddEacfd05e9f77D9aE8CBeF` (no funds needed, signs only) |
 | Relayer | `0x33Ce8977c712358F389429A18d68F37485791Ee3` (pays all gas, funded 2 MON) |
-| Drop 1 | "PHANTOM TRAIL 002 EMBER" — supply 50, freshness 50 blocks (~15s) |
-| Drop 2 | supply 2 — consumed in testing; drop 3 is the fresh stage demo |
 
 Keys live in `apps/last-unit-ui/.env.local` (gitignored). Owner key is `CONTRACT_OWNER_PK`
 in the root `.env`.
